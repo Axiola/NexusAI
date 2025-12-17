@@ -1,0 +1,39 @@
+name: Deploy to Base44
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zip site directory
+        run: |
+          if [ -d site ]; then
+            rm -f site.zip
+            cd site
+            zip -r ../site.zip .
+            cd ..
+          else
+            echo "No 'site' directory found, aborting"
+            exit 1
+          fi
+
+      - name: Deploy to Base44
+        env:
+          BASE44_API_TOKEN: ${{ secrets.BASE44_API_TOKEN }}
+          BASE44_PROJECT_ID: ${{ secrets.BASE44_PROJECT_ID }}
+        run: |
+          if [ -z "$BASE44_API_TOKEN" ]; then
+            echo "BASE44_API_TOKEN is not set"; exit 1
+          fi
+          URL="https://api.base44.app/v1/deploys"
+          if [ -n "$BASE44_PROJECT_ID" ]; then
+            curl -sS -X POST "$URL" -H "Authorization: Bearer $BASE44_API_TOKEN" -F "project_id=$BASE44_PROJECT_ID" -F "file=@site.zip" -o response.json || true
+          else
+            curl -sS -X POST "$URL" -H "Authorization: Bearer $BASE44_API_TOKEN" -F "file=@site.zip" -o response.json || true
+          fi
+          echo "Response:" && cat response.json || true
