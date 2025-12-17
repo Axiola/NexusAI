@@ -1,0 +1,28 @@
+{
+  "name": "SecurityLog",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email do usuário relacionado ao evento"
+    },
+    "event_type": {
+      "type": "string",
+      "description": "Tipo de evento (login, 2fa_change, password_reset, emergency, ip_change, register)"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "Endereço IP da ação"
+    },
+    "details": {
+      "type": "string",
+      "description": "Detalhes adicionais em JSON ou texto"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "warning", "critical"],
+      "default": "info"
+    }
+  },
+  "required": ["user_email", "event_type"]
+}

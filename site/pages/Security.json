@@ -1,0 +1,202 @@
+import React, { useState, useEffect } from 'react';
+import { base44 } from "@/api/base44Client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Users, Brain, Target, Lock } from "lucide-react";
+import { toast } from "sonner";
+import { motion } from "framer-motion";
+
+export default function PsychProfile() {
+  const [niche, setNiche] = useState('');
+  const [age, setAge] = useState('');
+  const [goal, setGoal] = useState('vender');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [profile, setProfile] = useState(null);
+
+  useEffect(() => {
+    base44.entities.NexusProfile.list('-created_date', 1).then(res => res.length && setProfile(res[0]));
+  }, []);
+
+  const handleAnalyze = async () => {
+    if (!niche || !age) return;
+    const COST = 15;
+    if (!profile || profile.credits < COST) {
+      toast.error("CRÉDITOS INSUFICIENTES (REQ: 15)");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await base44.integrations.Core.InvokeLLM({
+        prompt: `
+          ATUE COMO NEXUS. PSICÓLOGO COMPORTAMENTAL DE MASSA.
+          
+          NICHO: "${niche}"
+          FAIXA ETÁRIA: "${age}"
+          OBJETIVO: "${goal}"
+
+          Crie um perfil psicológico profundo e obscuro desse público. Fale o que eles não admitem.
+          
+          RETORNE JSON:
+          {
+            "hidden_fears": ["medo 1", "medo 2", "medo 3"],
+            "secret_desires": ["desejo 1", "desejo 2"],
+            "emotional_triggers": ["gatilho 1", "gatilho 2"],
+            "power_words": ["palavra1", "palavra2", "palavra3"],
+            "forbidden_words": ["palavra1", "palavra2"],
+            "manipulation_tactic": "uma frase sobre como influenciar esse grupo"
+          }
+        `,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            hidden_fears: { type: "array", items: { type: "string" } },
+            secret_desires: { type: "array", items: { type: "string" } },
+            emotional_triggers: { type: "array", items: { type: "string" } },
+            power_words: { type: "array", items: { type: "string" } },
+            forbidden_words: { type: "array", items: { type: "string" } },
+            manipulation_tactic: { type: "string" }
+          }
+        }
+      });
+
+      await base44.entities.NexusProfile.update(profile.id, { credits: profile.credits - COST, total_usage: (profile.total_usage || 0) + 1 });
+      setProfile(prev => ({...prev, credits: prev.credits - COST}));
+      
+      await base44.entities.GenerationLog.create({
+        module_id: "PSYCH_PROFILE",
+        input_summary: `${niche} / ${age}`,
+        output_data: JSON.stringify(response),
+        cost: COST
+      });
+
+      setResult(response);
+    } catch (e) {
+      console.error(e);
+      toast.error("ERRO DE ANÁLISE");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const Section = ({ title, items, color }) => (
+    <div className="bg-[#0a0a0a] border border-gray-800 p-6 relative overflow-hidden group hover:border-gray-700 transition-colors">
+      <div className={`absolute top-0 left-0 w-1 h-full ${color}`}></div>
+      <h3 className="text-gray-500 font-bold uppercase text-xs tracking-widest mb-4">{title}</h3>
+      <ul className="space-y-2">
+        {items.map((item, i) => (
+          <li key={i} className="text-gray-300 font-sans text-sm flex items-start gap-2">
+            <span className={`mt-1.5 w-1 h-1 rounded-full ${color.replace('bg-', 'text-')}`}>●</span> 
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+  return (
+    <div className="max-w-5xl mx-auto pb-20">
+       <div className="border-l-2 border-[#8b00ff] pl-6 py-2 mb-8">
+        <h2 className="text-3xl font-bold text-white tracking-tighter uppercase flex items-center gap-3">
+          <Brain className="text-[#8b00ff]" /> Perfil Psicológico
+        </h2>
+        <p className="text-gray-500 font-mono text-sm mt-1">
+          MAPEAMENTO DE INCONSCIENTE COLETIVO // CUSTO: 15 CRD
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+        <div className="lg:col-span-1 space-y-4 bg-[#0a0a0a] p-6 border border-gray-800 h-fit">
+          <div className="space-y-2">
+            <label className="text-xs text-gray-500 font-bold">NICHO</label>
+            <Input 
+              placeholder="Ex: Marketing Digital" 
+              value={niche} 
+              onChange={e => setNiche(e.target.value)}
+              className="bg-[#050505] border-gray-800" 
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs text-gray-500 font-bold">FAIXA ETÁRIA</label>
+            <Input 
+              placeholder="Ex: 25-34 anos" 
+              value={age} 
+              onChange={e => setAge(e.target.value)}
+              className="bg-[#050505] border-gray-800" 
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs text-gray-500 font-bold">OBJETIVO</label>
+            <Select value={goal} onValueChange={setGoal}>
+              <SelectTrigger className="bg-[#050505] border-gray-800">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="vender">Vender</SelectItem>
+                <SelectItem value="engajar">Engajar</SelectItem>
+                <SelectItem value="liderar">Liderar / Autoridade</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button 
+            onClick={handleAnalyze} 
+            disabled={loading || !niche || !age}
+            className="w-full bg-[#8b00ff] hover:bg-[#7000cc] mt-4 font-bold tracking-widest"
+          >
+            {loading ? <Loader2 className="animate-spin" /> : "PROCESSAR"}
+          </Button>
+        </div>
+
+        <div className="lg:col-span-3">
+          {result ? (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-6"
+            >
+              <div className="bg-[#111] p-6 border-b border-[#8b00ff]">
+                <h3 className="text-white font-bold mb-2 flex items-center gap-2">
+                  <Target className="w-4 h-4 text-[#8b00ff]" /> TÁTICA DE MANIPULAÇÃO
+                </h3>
+                <p className="text-gray-300 font-mono text-sm leading-relaxed">
+                  "{result.manipulation_tactic}"
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Section title="MEDOS OCULTOS" items={result.hidden_fears} color="bg-red-900" />
+                <Section title="DESEJOS SECRETOS" items={result.secret_desires} color="bg-green-900" />
+                <Section title="GATILHOS EMOCIONAIS" items={result.emotional_triggers} color="bg-yellow-900" />
+                <div className="space-y-4">
+                  <div className="bg-[#0a0a0a] border border-gray-800 p-4">
+                    <h4 className="text-green-500 text-xs font-bold mb-2 uppercase">Palavras de Poder</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {result.power_words.map((w, i) => (
+                        <span key={i} className="text-xs bg-green-950 text-green-400 px-2 py-1 border border-green-900">{w}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-[#0a0a0a] border border-gray-800 p-4">
+                    <h4 className="text-red-500 text-xs font-bold mb-2 uppercase">EVITAR (Anti-vírus Mental)</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {result.forbidden_words.map((w, i) => (
+                        <span key={i} className="text-xs bg-red-950 text-red-400 px-2 py-1 border border-red-900 line-through">{w}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-gray-700 space-y-4 border border-gray-900 border-dashed rounded-lg min-h-[400px]">
+              <Lock className="w-12 h-12 opacity-20" />
+              <p className="font-mono text-sm">AGUARDANDO DADOS DO ALVO...</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

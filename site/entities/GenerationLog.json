@@ -1,0 +1,23 @@
+{
+  "name": "GenerationLog",
+  "type": "object",
+  "properties": {
+    "module_id": {
+      "type": "string",
+      "description": "ID do módulo utilizado"
+    },
+    "input_summary": {
+      "type": "string",
+      "description": "Resumo do input"
+    },
+    "output_data": {
+      "type": "string",
+      "description": "Resultado JSON stringified"
+    },
+    "cost": {
+      "type": "integer",
+      "description": "Créditos consumidos"
+    }
+  },
+  "required": ["module_id", "cost"]
+}

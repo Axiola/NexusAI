@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "react": "^18.x",
+    "react-router-dom": "^6.x",
+    "tailwindcss": "^3.x",
+    "@tanstack/react-query": "^5.x",
+    "lucide-react": "latest",
+    "framer-motion": "^11.x",
+    "otplib": "^12.x",
+    "qrcode": "^1.5.x",
+    "sonner": "^1.x",
+    "date-fns": "^3.x"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "SavedPattern",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "content": {
+      "type": "string"
+    },
+    "performance_notes": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "string"
+    }
+  },
+  "required": ["content"]
+}

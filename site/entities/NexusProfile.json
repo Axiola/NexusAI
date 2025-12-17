@@ -1,0 +1,59 @@
+{
+  "name": "NexusProfile",
+  "type": "object",
+  "properties": {
+    "plan": {
+      "type": "string",
+      "enum": ["free", "pro", "elite"],
+      "default": "free"
+    },
+    "role": {
+      "type": "string",
+      "enum": ["user", "admin", "owner"],
+      "default": "user"
+    },
+    "credits": {
+      "type": "integer",
+      "default": 20
+    },
+    "total_usage": {
+      "type": "integer",
+      "default": 0
+    },
+    "is_blocked": {
+      "type": "boolean",
+      "default": false
+    },
+    "two_fa_enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "two_fa_secret": {
+      "type": "string",
+      "description": "Segredo TOTP"
+    },
+    "backup_codes": {
+      "type": "string",
+      "description": "Códigos de backup criptografados/stringified"
+    },
+    "failed_2fa_attempts": {
+      "type": "integer",
+      "default": 0
+    },
+    "last_failed_2fa": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_ip": {
+      "type": "string"
+    },
+    "security_lockdown": {
+      "type": "boolean",
+      "default": false
+    },
+    "security_token": {
+      "type": "string"
+    }
+  },
+  "required": ["plan", "role"]
+}

@@ -1,0 +1,240 @@
+import { base44 } from "@/api/base44Client";
+import { authenticator } from 'otplib';
+import QRCode from 'qrcode';
+import { toast } from "sonner";
+import { Buffer } from 'buffer';
+
+// Polyfill Buffer for otplib in browser
+if (typeof window !== 'undefined') {
+  window.Buffer = window.Buffer || Buffer;
+}
+
+// Configuration for TOTP
+authenticator.options = { window: 1 };
+
+export const SecurityService = {
+  // --- 2FA Management ---
+  
+  async generate2FASecret(userEmail) {
+    const secret = authenticator.generateSecret();
+    const otpauth = authenticator.keyuri(userEmail, 'Nexus_IA', secret);
+    const qrCodeUrl = await QRCode.toDataURL(otpauth);
+    return { secret, qrCodeUrl };
+  },
+
+  async verify2FA(token, secret) {
+    try {
+      // Rate limiting could be checked here against a profile's failed_attempts
+      return authenticator.check(token, secret);
+    } catch (e) {
+      console.error("Token verification failed", e);
+      return false;
+    }
+  },
+
+  generateBackupCodes(count = 5) {
+    const codes = [];
+    for (let i = 0; i < count; i++) {
+      codes.push(Math.random().toString(36).substring(2, 10).toUpperCase());
+    }
+    return codes;
+  },
+
+  async enable2FA(profileId, secret) {
+    const backupCodes = this.generateBackupCodes();
+    await base44.entities.NexusProfile.update(profileId, {
+      two_fa_enabled: true,
+      two_fa_secret: secret,
+      backup_codes: JSON.stringify(backupCodes)
+    });
+    await this.logSecurityEvent(null, '2fa_change', 'enabled');
+    return backupCodes;
+  },
+
+  async verifyBackupCode(profileId, code) {
+    const profiles = await base44.entities.NexusProfile.filter({ id: profileId });
+    if (!profiles.length) return false;
+    const profile = profiles[0];
+    
+    let codes = [];
+    try {
+      codes = JSON.parse(profile.backup_codes || '[]');
+    } catch (e) { return false; }
+
+    if (codes.includes(code)) {
+      // Consume code
+      const newCodes = codes.filter(c => c !== code);
+      await base44.entities.NexusProfile.update(profileId, {
+        backup_codes: JSON.stringify(newCodes)
+      });
+      await this.logSecurityEvent(profile, 'backup_code_used', 'Login via backup code');
+      return true;
+    }
+    return false;
+  },
+
+  async regenerateBackupCodes(profileId) {
+    const newCodes = this.generateBackupCodes();
+    await base44.entities.NexusProfile.update(profileId, {
+      backup_codes: JSON.stringify(newCodes)
+    });
+    await this.logSecurityEvent(null, 'backup_codes_regenerated', 'User requested new codes');
+    return newCodes;
+  },
+
+  async disable2FA(profileId) {
+    await base44.entities.NexusProfile.update(profileId, {
+      two_fa_enabled: false,
+      two_fa_secret: null
+    });
+    await this.logSecurityEvent(null, '2fa_change', 'disabled');
+  },
+
+  // --- Email & Alerts ---
+
+  async sendAlert(type, user, details = {}) {
+    const subjectMap = {
+      'login_new_device': '⚠️ Novo Acesso Detectado',
+      'password_change': '🔒 Alteração de Senha',
+      '2fa_change': '🛡️ Alteração no 2FA',
+      'lockdown': '🚨 ALERTA CRÍTICO: CONTA BLOQUEADA',
+      'register': 'Bem-vindo ao Protocolo NEXUS'
+    };
+
+    const subject = subjectMap[type] || `Alerta de Segurança: ${type}`;
+    
+    // Secure Token
+    const secureToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const emergencyLink = `${window.location.origin}/EmergencyLockdown?token=${secureToken}&uid=${user.id}`;
+    
+    // Update profile with token
+    await base44.entities.NexusProfile.update(user.id, {
+      security_token: secureToken
+    });
+
+    // Rich Body
+    const body = `
+      NEXUS SECURITY SYSTEM
+      ------------------------------------------------
+      EVENTO: ${type.toUpperCase()}
+      DATA: ${new Date().toLocaleString()}
+      CONTA: ${user.created_by} (${user.role?.toUpperCase() || 'USER'})
+      
+      DETALHES DA ORIGEM:
+      IP: ${details.ip || 'N/A'}
+      LOCALIZAÇÃO: ${details.location || 'N/A'}
+      
+      ------------------------------------------------
+      NÃO FOI VOCÊ?
+      Clique no link abaixo IMEDIATAMENTE para bloquear sua conta e derrubar todas as sessões ativas:
+      
+      ${emergencyLink}
+      
+      ------------------------------------------------
+      Se foi você, ignore este aviso.
+      NEXUS_OS // AUTO_DEFENSE_PROTOCOL
+    `;
+
+    try {
+      await base44.integrations.Core.SendEmail({
+        to: user.created_by,
+        subject: `[NEXUS] ${subject}`,
+        body: body
+      });
+    } catch (e) {
+      console.error("Email dispatch failed", e);
+    }
+  },
+
+  // --- Logging ---
+
+  async checkLoginSecurity(profile) {
+    try {
+      // Fetch IP info
+      const ipRes = await fetch('https://ipapi.co/json/'); // More detailed API
+      const ipData = await ipRes.json();
+      const currentIp = ipData.ip;
+      
+      // Check if IP changed
+      if (profile.last_ip && profile.last_ip !== currentIp) {
+        await this.logSecurityEvent(profile, 'login_new_device', {
+          old_ip: profile.last_ip,
+          new_ip: currentIp,
+          location: `${ipData.city}, ${ipData.country_name}`,
+          network: ipData.org
+        });
+        
+        // Update last IP
+        await base44.entities.NexusProfile.update(profile.id, { last_ip: currentIp });
+      } else if (!profile.last_ip) {
+        // First Login
+        await base44.entities.NexusProfile.update(profile.id, { last_ip: currentIp });
+        await this.logSecurityEvent(profile, 'login', {
+          ip: currentIp,
+          location: `${ipData.city}, ${ipData.country_name}`
+        });
+      }
+    } catch(e) {
+      console.error("Login security check failed", e);
+    }
+  },
+
+  async logSecurityEvent(user, type, details) {
+    try {
+      const userEmail = user ? user.created_by : (await base44.auth.me())?.email;
+      if (!userEmail) return;
+
+      // Ensure user object has ID for email sending
+      let fullProfile = user;
+      if (!fullProfile.id) {
+         const profiles = await base44.entities.NexusProfile.filter({ created_by: userEmail });
+         if (profiles.length) fullProfile = profiles[0];
+      }
+
+      // Get Basic IP if not provided in details
+      let ip = details?.ip || details?.new_ip || 'unknown';
+      let location = details?.location || 'Unknown Location';
+
+      if (ip === 'unknown') {
+         try {
+            const ipRes = await fetch('https://api.ipify.org?format=json');
+            const ipData = await ipRes.json();
+            ip = ipData.ip;
+         } catch(e) {}
+      }
+
+      const stringDetails = typeof details === 'string' ? details : JSON.stringify(details);
+
+      await base44.entities.SecurityLog.create({
+        user_email: userEmail,
+        event_type: type,
+        ip_address: ip,
+        details: stringDetails,
+        severity: ['lockdown', 'failed_login', 'login_new_device'].includes(type) ? 'critical' : 'info'
+      });
+      
+      // Email Trigger
+      if (['register', 'login_new_device', 'password_change', '2fa_change', 'lockdown'].includes(type)) {
+         if (fullProfile) {
+            this.sendAlert(type, fullProfile, { ip, location, details: stringDetails });
+         }
+      }
+
+    } catch (e) {
+      console.error("Logging failed", e);
+    }
+  },
+
+  // --- Emergency ---
+  
+  async triggerLockdown(profile) {
+    await base44.entities.NexusProfile.update(profile.id, {
+      security_lockdown: true,
+      security_token: null, // Consume token
+      is_blocked: true // Block access
+    });
+    
+    await this.logSecurityEvent({ created_by: profile.created_by }, 'lockdown', 'Emergency link activated');
+    return true;
+  }
+};

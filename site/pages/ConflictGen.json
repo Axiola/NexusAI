@@ -1,0 +1,189 @@
+import React, { useState, useEffect } from 'react';
+import { base44 } from "@/api/base44Client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { Loader2, MessageSquareWarning, Flame, Skull, Copy } from "lucide-react";
+import { toast } from "sonner";
+import { motion } from "framer-motion";
+
+export default function ConflictGen() {
+  const [topic, setTopic] = useState('');
+  const [aggression, setAggression] = useState([50]);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [profile, setProfile] = useState(null);
+
+  useEffect(() => {
+    base44.entities.NexusProfile.list('-created_date', 1).then(res => res.length && setProfile(res[0]));
+  }, []);
+
+  const getAggressionLabel = (val) => {
+    if (val < 25) return { label: "SARCASMO LEVE", color: "text-yellow-500" };
+    if (val < 50) return { label: "PROVOCAÇÃO DIRETA", color: "text-orange-500" };
+    if (val < 75) return { label: "ATAQUE CONTROLADO", color: "text-red-500" };
+    return { label: "CAOS TOTAL", color: "text-[#ff003c] animate-pulse" };
+  };
+
+  const handleGenerate = async () => {
+    if (!topic) return;
+    const COST = 10;
+    if (!profile || profile.credits < COST) {
+      toast.error("CRÉDITOS INSUFICIENTES (REQ: 10)");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const level = getAggressionLabel(aggression[0]).label;
+      
+      const response = await base44.integrations.Core.InvokeLLM({
+        prompt: `
+          ATUE COMO NEXUS. GERADOR DE ENGAGEMENT BAIT.
+          
+          TÓPICO: "${topic}"
+          NÍVEL DE AGRESSIVIDADE: ${level} (${aggression[0]}%)
+
+          Gere 5 comentários curtos projetados para gerar discórdia e respostas imediatas.
+          Eles devem parecer escritos por um humano real (com erros propositais de pontuação, gírias, letras minúsculas).
+          
+          RETORNE JSON:
+          {
+            "comments": [
+              { "text": "...", "type": "discordância" | "ataque" | "ironia", "predicted_replies": "X" }
+            ],
+            "strategy": "explicação tática de uma frase"
+          }
+        `,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            comments: { 
+              type: "array", 
+              items: { 
+                type: "object",
+                properties: {
+                  text: { type: "string" },
+                  type: { type: "string" },
+                  predicted_replies: { type: "string" }
+                }
+              } 
+            },
+            strategy: { type: "string" }
+          }
+        }
+      });
+
+      await base44.entities.NexusProfile.update(profile.id, { credits: profile.credits - COST, total_usage: (profile.total_usage || 0) + 1 });
+      setProfile(prev => ({...prev, credits: prev.credits - COST}));
+      
+      await base44.entities.GenerationLog.create({
+        module_id: "CONFLICT_GEN",
+        input_summary: `${topic} [${level}]`,
+        output_data: JSON.stringify(response),
+        cost: COST
+      });
+
+      setResult(response);
+    } catch (e) {
+      console.error(e);
+      toast.error("ERRO NA GERAÇÃO");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    toast.success("COPIADO PARA CLIPBOARD");
+  };
+
+  const aggInfo = getAggressionLabel(aggression[0]);
+
+  return (
+    <div className="max-w-3xl mx-auto pb-20">
+      <div className="border-l-2 border-yellow-600 pl-6 py-2 mb-8">
+        <h2 className="text-3xl font-bold text-white tracking-tighter uppercase flex items-center gap-3">
+          <MessageSquareWarning className="text-yellow-600" /> Gerador de Conflito
+        </h2>
+        <p className="text-gray-500 font-mono text-sm mt-1">
+          ENGENHARIA DE POLARIZAÇÃO // CUSTO: 10 CRD
+        </p>
+      </div>
+
+      <div className="bg-[#0a0a0a] border border-gray-800 p-6 space-y-8">
+        <div className="space-y-2">
+          <Label className="text-gray-400 font-mono text-xs uppercase">Tópico / Nicho / Opinião</Label>
+          <Input 
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            className="bg-[#050505] border-gray-800 text-white h-12 font-mono"
+            placeholder="Ex: Investimento em Crypto vs Ações"
+          />
+        </div>
+
+        <div className="space-y-6">
+          <div className="flex justify-between">
+            <Label className="text-gray-400 font-mono text-xs uppercase">Nível de Toxidade</Label>
+            <span className={`font-black tracking-widest uppercase text-sm ${aggInfo.color}`}>
+              {aggInfo.label}
+            </span>
+          </div>
+          <Slider 
+            value={aggression} 
+            onValueChange={setAggression} 
+            max={100} 
+            step={1}
+            className="py-4"
+          />
+        </div>
+
+        <Button 
+          onClick={handleGenerate} 
+          disabled={loading || !topic}
+          className="w-full bg-yellow-700 hover:bg-yellow-600 text-white font-bold h-12 rounded-none tracking-widest"
+        >
+          {loading ? <Loader2 className="animate-spin" /> : <span className="flex items-center gap-2"><Flame className="w-4 h-4" /> INICIAR CAOS</span>}
+        </Button>
+      </div>
+
+      {result && (
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-8 space-y-6"
+        >
+          <div className="bg-[#111] p-4 border-l-4 border-gray-700">
+            <p className="text-gray-400 text-sm font-mono"><span className="text-white font-bold">ESTRATÉGIA:</span> {result.strategy}</p>
+          </div>
+
+          <div className="grid gap-4">
+            {result.comments.map((item, idx) => (
+              <div key={idx} className="relative group bg-[#0a0a0a] border border-gray-800 p-4 hover:border-yellow-900 transition-colors">
+                <div className="flex justify-between items-start mb-2">
+                  <span className={`text-[10px] uppercase font-bold px-2 py-0.5 border ${item.type === 'ataque' ? 'border-red-900 text-red-500' : 'border-gray-800 text-gray-500'}`}>
+                    {item.type}
+                  </span>
+                  <span className="text-[10px] text-gray-600 font-mono flex items-center gap-1">
+                    <Skull className="w-3 h-3" /> POTENCIAL: {item.predicted_replies} REPLIES
+                  </span>
+                </div>
+                <p className="text-white font-medium text-lg font-sans mb-4 pr-10">"{item.text}"</p>
+                
+                <Button 
+                  onClick={() => copyToClipboard(item.text)}
+                  variant="ghost" 
+                  size="icon" 
+                  className="absolute bottom-2 right-2 hover:bg-white/10 hover:text-white text-gray-600"
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}

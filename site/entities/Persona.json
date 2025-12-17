@@ -1,0 +1,21 @@
+{
+  "name": "Persona",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "tone": {
+      "type": "string"
+    },
+    "vocabulary": {
+      "type": "string"
+    },
+    "aggressiveness": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    }
+  },
+  "required": ["name"]
+}

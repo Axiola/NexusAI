@@ -1,0 +1,177 @@
+import React, { useEffect, useState } from 'react';
+import { base44 } from "@/api/base44Client";
+import { Link } from 'react-router-dom';
+import { 
+  Zap, 
+  TrendingUp, 
+  Activity, 
+  Lock, 
+  ArrowRight,
+  AlertTriangle,
+  BrainCircuit,
+  Bookmark,
+  GitCompare
+} from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+
+export default function Dashboard() {
+  const [profile, setProfile] = useState(null);
+  const [recentLogs, setRecentLogs] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [profiles, logs] = await Promise.all([
+          base44.entities.NexusProfile.list('-created_date', 1),
+          base44.entities.GenerationLog.list('-created_date', 5)
+        ]);
+        
+        if (profiles && profiles.length > 0) setProfile(profiles[0]);
+        if (logs) setRecentLogs(logs);
+      } catch (error) {
+        console.error("Dashboard load error", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  const ModuleCard = ({ title, desc, icon: Icon, path, locked = false }) => (
+    <Link to={locked ? "#" : path} className={`block group ${locked ? 'cursor-not-allowed opacity-50' : ''}`}>
+      <div className="h-full border border-gray-800 bg-[#0a0a0a] p-6 relative overflow-hidden transition-all duration-300 hover:border-gray-600 hover:bg-[#0f0f0f]">
+        {locked && (
+          <div className="absolute top-2 right-2 text-gray-600">
+            <Lock className="w-4 h-4" />
+          </div>
+        )}
+        {!locked && (
+          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-[#ff003c]/10 to-transparent transform translate-x-10 -translate-y-10 group-hover:translate-x-5 group-hover:-translate-y-5 transition-transform"></div>
+        )}
+        
+        <div className="mb-4 text-gray-400 group-hover:text-[#ff003c] transition-colors">
+          <Icon className="w-8 h-8" />
+        </div>
+        
+        <h3 className="text-lg font-bold text-white mb-2 tracking-tight group-hover:translate-x-1 transition-transform">
+          {title}
+        </h3>
+        <p className="text-sm text-gray-500 leading-relaxed">
+          {desc}
+        </p>
+        
+        <div className="mt-4 flex items-center text-xs font-mono text-[#ff003c] opacity-0 group-hover:opacity-100 transition-opacity">
+          INICIAR PROTOCOLO <ArrowRight className="w-3 h-3 ml-2" />
+        </div>
+      </div>
+    </Link>
+  );
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      {/* Header */}
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-gray-900 pb-6">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tighter mb-2">
+            PAINEL DE CONTROLE
+          </h1>
+          <p className="text-gray-500 max-w-md">
+            Bem-vindo ao NEXUS. Selecione um módulo neural para iniciar a manipulação.
+          </p>
+        </div>
+        <div className="mt-4 md:mt-0 text-right">
+          <p className="text-xs text-gray-600 uppercase tracking-widest mb-1">Status da Conta</p>
+          <div className="flex items-center gap-2 justify-end">
+            <div className={`w-2 h-2 rounded-full ${profile?.credits > 0 ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-red-500'}`}></div>
+            <span className="font-mono text-white font-bold">{isLoading ? "..." : (profile?.plan || 'FREE').toUpperCase()}</span>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <ModuleCard 
+          title="SIMULADOR DE VIRALIZAÇÃO" 
+          desc="Analisa probabilidade de explosão. Detecta falhas estruturais e emocionais no seu texto."
+          icon={Zap}
+          path="/ViralSimulator"
+        />
+        <ModuleCard 
+          title="GERADOR DE CONFLITO" 
+          desc="Engenharia de comentários polarizantes para forçar engajamento agressivo."
+          icon={AlertTriangle}
+          path="/ConflictGen"
+        />
+        <ModuleCard 
+          title="PERFIL PSICOLÓGICO" 
+          desc="Mapeamento profundo de medos e desejos do público alvo."
+          icon={Activity}
+          path="/PsychProfile"
+        />
+        <ModuleCard 
+          title="DETECTOR DE TEXTO MORTO" 
+          desc="Identifica padrões robóticos e reescreve com imperfeições humanas calculadas."
+          icon={TrendingUp}
+          path="/DeadText"
+        />
+        <ModuleCard 
+          title="SISTEMA DE PERSONAS" 
+          desc="Gerenciamento de identidades digitais para replicação de tom de voz."
+          icon={BrainCircuit}
+          path="/Personas"
+        />
+        <ModuleCard 
+          title="BANCO DE PADRÕES" 
+          desc="Biblioteca de algoritmos vencedores e mutação de conteúdo."
+          icon={Bookmark}
+          path="/PatternBank"
+        />
+        <ModuleCard 
+          title="TESTE A/B" 
+          desc="Simulação de batalha algorítmica entre variações de texto."
+          icon={GitCompare}
+          path="/ABTester"
+        />
+      </div>
+
+      {/* Recent Activity Mini-Table */}
+      <div className="border border-gray-900 bg-[#0a0a0a] p-6 mt-8">
+        <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-[#ff003c]" />
+          Log de Operações Recentes
+        </h3>
+        
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full bg-gray-900" />)}
+          </div>
+        ) : recentLogs.length === 0 ? (
+          <div className="text-sm text-gray-600 italic py-4">Nenhuma operação registrada no ciclo atual.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-gray-400">
+              <thead className="border-b border-gray-800 text-xs text-gray-600 uppercase">
+                <tr>
+                  <th className="py-2">Módulo</th>
+                  <th className="py-2">Custo</th>
+                  <th className="py-2">Data</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono">
+                {recentLogs.map((log) => (
+                  <tr key={log.id} className="border-b border-gray-900/50 hover:bg-[#111]">
+                    <td className="py-3 text-white">{log.module_id}</td>
+                    <td className="py-3 text-[#ff003c]">{log.cost} CRD</td>
+                    <td className="py-3 text-gray-600">{new Date(log.created_date).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

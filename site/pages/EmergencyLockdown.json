@@ -1,0 +1,98 @@
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { base44 } from "@/api/base44Client";
+import { ShieldAlert, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { SecurityService } from "@/components/SecurityService";
+
+export default function EmergencyLockdown() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [status, setStatus] = useState('verifying'); // verifying, success, error
+  
+  useEffect(() => {
+    const handleLockdown = async () => {
+      const token = searchParams.get('token');
+      const uid = searchParams.get('uid');
+
+      if (!token || !uid) {
+        setStatus('error');
+        return;
+      }
+
+      try {
+        const profile = await base44.entities.NexusProfile.get(uid);
+        
+        if (!profile || profile.security_token !== token) {
+          setStatus('error');
+          return;
+        }
+
+        // Execute Lockdown
+        await SecurityService.triggerLockdown(profile);
+        
+        // Force logout if it's the current user
+        const currentUser = await base44.auth.me();
+        if (currentUser && currentUser.email === profile.created_by) {
+           await base44.auth.logout();
+        }
+
+        setStatus('success');
+
+      } catch (e) {
+        console.error(e);
+        setStatus('error');
+      }
+    };
+
+    handleLockdown();
+  }, [searchParams]);
+
+  return (
+    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
+      <div className="max-w-md w-full border border-[#333] bg-[#0a0a0a] p-8 text-center rounded-lg shadow-[0_0_50px_rgba(255,0,60,0.2)]">
+        
+        {status === 'verifying' && (
+          <div className="space-y-4">
+            <Loader2 className="w-16 h-16 text-yellow-500 animate-spin mx-auto" />
+            <h1 className="text-2xl font-bold font-mono">VERIFICANDO TOKEN...</h1>
+            <p className="text-gray-500">Iniciando protocolo de contenção.</p>
+          </div>
+        )}
+
+        {status === 'success' && (
+          <div className="space-y-6">
+            <ShieldAlert className="w-20 h-20 text-[#ff003c] mx-auto animate-pulse" />
+            <h1 className="text-3xl font-black text-[#ff003c] tracking-tighter uppercase">CONTA PROTEGIDA</h1>
+            <div className="bg-red-950/20 border border-red-900 p-4 rounded text-left space-y-2 text-sm">
+              <p className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-red-500"/> Sessões encerradas</p>
+              <p className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-red-500"/> Acesso bloqueado</p>
+              <p className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-red-500"/> Tokens revogados</p>
+            </div>
+            <p className="text-gray-400 text-sm">
+              Sua conta está segura e inacessível. Entre em contato com o suporte ou use a recuperação de senha para reestabelecer o acesso.
+            </p>
+            <Button 
+              className="w-full bg-white text-black hover:bg-gray-200 font-bold"
+              onClick={() => navigate('/')}
+            >
+              VOLTAR AO INÍCIO
+            </Button>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className="space-y-4">
+            <XCircle className="w-16 h-16 text-gray-700 mx-auto" />
+            <h1 className="text-2xl font-bold text-gray-500">LINK INVÁLIDO</h1>
+            <p className="text-gray-600">Este link de segurança expirou ou já foi utilizado.</p>
+            <Button variant="outline" onClick={() => navigate('/')}>
+              Sair
+            </Button>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
